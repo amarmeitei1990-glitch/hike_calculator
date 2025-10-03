@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CTC Hike Calculator — Aligned Columns</title>
+<style>
+  :root{
+    --bg-a:#071127; --bg-b:#05294a; --accent1:#6ee7b7; --accent2:#60a5fa; --glow: rgba(96,165,250,0.16);
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:linear-gradient(135deg,var(--bg-a),var(--bg-b));
+    display:flex;align-items:center;justify-content:center;padding:28px;color:#fff;
+  }
+  .wrap{width:100%;max-width:980px}
+  .card{background:rgba(0,0,0,0.66);border-radius:12px;padding:20px;box-shadow:0 30px 60px rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.04)}
+  h1{margin:0 0 8px;font-size:20px}
+  p.lead{margin:0 0 12px;color:#dbeafe}
+  label{display:block;margin:12px 0 8px;font-weight:600;color:#fff}
+  input[type=text], input[type=number]{
+    width:100%;padding:12px;border-radius:10px;
+    border:1px solid rgba(255,255,255,0.06);
+    background:#071826;color:#fff;font-size:15px
+  }
+  input[type=number]::-webkit-outer-spin-button,input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  input[type=number]{-moz-appearance:textfield}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:end}
+  .controls-row{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+  .btn{padding:10px 14px;border-radius:10px;border:none;background:linear-gradient(90deg,var(--accent2),var(--accent1));color:#04263b;font-weight:700;cursor:pointer;box-shadow:0 8px 20px var(--glow)}
+  .btn.secondary{background:#0f1723;color:#fff;border:1px solid rgba(255,255,255,0.06);box-shadow:none}
+  .summary{margin-top:14px}
+  .summary div{margin:6px 0;color:#fff;font-weight:600}
+  /* TABLE: fixed layout and column widths for alignment */
+  table{width:100%;border-collapse:collapse;margin-top:12px;color:#fff;table-layout:fixed}
+  thead th{padding:10px;border-bottom:1px solid rgba(255,255,255,0.08);font-weight:700}
+  tbody td{padding:10px;border-bottom:1px solid rgba(255,255,255,0.04)}
+  /* explicit widths to match your markers:
+     Year 20% (left), CTC 50% (center), Increase 30% (right) */
+  thead th:nth-child(1), tbody td:nth-child(1){width:20%;text-align:left}
+  thead th:nth-child(2), tbody td:nth-child(2){width:50%;text-align:center}
+  thead th:nth-child(3), tbody td:nth-child(3){width:30%;text-align:right}
+  /* responsive: stack columns on small screens */
+  @media (max-width:800px){
+    .grid{grid-template-columns:1fr}
+    table{table-layout:auto}
+    thead th, tbody td { text-align:left !important; display:block; width:100% }
+    tbody tr { display:block; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.03) }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>CTC Hike Calculator</h1>
+      <p class="lead">Enter current CTC, annual hike (%) and number of years. Results start from next year.</p>
+
+      <div class="grid">
+        <div>
+          <label for="ctc">Current CTC (₹)</label>
+          <input id="ctc" type="text" inputmode="numeric" autocomplete="off" />
+        </div>
+
+        <div>
+          <label for="pct">Annual Hike (%)</label>
+          <input id="pct" type="number" inputmode="decimal" />
+        </div>
+
+        <div>
+          <label for="yrs">Number of years</label>
+          <input id="yrs" type="number" inputmode="numeric" />
+        </div>
+      </div>
+
+      <div class="controls-row">
+        <button class="btn" id="calc">Calculate</button>
+        <button class="btn secondary" id="reset">Reset</button>
+      </div>
+
+      <div class="summary" aria-live="polite">
+        <div>Current: <strong id="sumCurrent">-</strong></div>
+        <div>Final (after years): <strong id="sumFinal">-</strong></div>
+        <div>Total increase: <strong id="sumInc">-</strong></div>
+      </div>
+
+      <table id="table" role="table" aria-label="Yearly CTC table">
+        <thead><tr><th>Year</th><th>CTC (₹)</th><th>Increase over prev (₹)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+<script>
+/* Caret-preserving Indian CTC formatter (non-blocking) */
+function formatIndianFromDigits(digits){
+  if(!digits) return '';
+  digits = digits.replace(/^0+(?=\d)/,'');
+  if(digits.length <= 3) return digits;
+  const last3 = digits.slice(-3);
+  let rest = digits.slice(0, -3);
+  rest = rest.replace(/(\d)(?=(\d{2})+$)/g, '$1,');
+  return rest + ',' + last3;
+}
+function attachFormatter(el){
+  el.addEventListener('input', function(){
+    const raw = this.value;
+    const sel = this.selectionStart;
+    const digitsBefore = (raw.slice(0, sel).match(/\d/g) || []).length;
+    const digits = (raw.match(/\d/g) || []).join('');
+    if(!digits){ this.value = ''; return; }
+    const formatted = formatIndianFromDigits(digits);
+    this.value = formatted;
+    if(digitsBefore === 0){ this.setSelectionRange(0,0); return; }
+    let seen = 0, pos = 0;
+    while(pos < this.value.length && seen < digitsBefore){
+      if(/\d/.test(this.value[pos])) seen++;
+      pos++;
+    }
+    this.setSelectionRange(pos,pos);
+  });
+  el.addEventListener('keydown', function(e){
+    const allowed = ['Backspace','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Delete','Tab','Enter','Home','End'];
+    if (allowed.includes(e.key)) return;
+    if (e.ctrlKey || e.metaKey) return;
+    if (/^\d$/.test(e.key)) return;
+    e.preventDefault();
+  });
+  el.addEventListener('blur', function(){
+    const digits = (this.value.match(/\d/g) || []).join('');
+    this.value = digits ? formatIndianFromDigits(digits) : '';
+  });
+}
+function parseIndian(str){ return Number(String(str).replace(/,/g,'')) || 0; }
+
+document.addEventListener('DOMContentLoaded', function(){
+  const ctc = document.getElementById('ctc'),
+        pct = document.getElementById('pct'),
+        yrs = document.getElementById('yrs'),
+        calc = document.getElementById('calc'),
+        reset = document.getElementById('reset'),
+        tbody = document.querySelector('#table tbody'),
+        sumCurrent = document.getElementById('sumCurrent'),
+        sumFinal = document.getElementById('sumFinal'),
+        sumInc = document.getElementById('sumInc');
+
+  attachFormatter(ctc);
+
+  function clearOut(){
+    sumCurrent.textContent = '-';
+    sumFinal.textContent = '-';
+    sumInc.textContent = '-';
+    tbody.innerHTML = '';
+  }
+
+  calc.addEventListener('click', function(){
+    const base = parseIndian(ctc.value),
+          p = parseFloat(pct.value) || 0,
+          n = Math.max(0, parseInt(yrs.value || 0, 10) || 0);
+
+    tbody.innerHTML = '';
+    if(!base || n <= 0){ clearOut(); return; }
+
+    let prev = base;
+    const start = new Date().getFullYear();
+    const rows = [];
+    for(let i=1;i<=n;i++){
+      const year = start + i;
+      const next = Math.round(prev * (1 + p/100));
+      const inc = next - prev;
+      rows.push({year, ctc: next, inc});
+      prev = next;
+    }
+
+    rows.forEach(r=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.year}</td><td style="text-align:center">₹${r.ctc.toLocaleString('en-IN')}</td><td style="text-align:right">₹${r.inc.toLocaleString('en-IN')}</td>`;
+      tbody.appendChild(tr);
+    });
+
+    const final = rows[rows.length - 1].ctc;
+    sumCurrent.textContent = '₹' + base.toLocaleString('en-IN');
+    sumFinal.textContent = '₹' + final.toLocaleString('en-IN');
+    sumInc.textContent = '₹' + (final - base).toLocaleString('en-IN');
+  });
+
+  reset.addEventListener('click', function(){
+    ctc.value = ''; pct.value = ''; yrs.value = '';
+    clearOut(); ctc.focus();
+  });
+
+  clearOut();
+});
+</script>
+</body>
+</html>
